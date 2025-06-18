@@ -1,0 +1,216 @@
+import os
+import shutil
+import threading
+import tkinter as tk
+from operator import index
+from tkinter import filedialog, messagebox
+from tkinter import ttk  # для прогрессбара
+from concurrent.futures import ThreadPoolExecutor
+
+# Задаём изначальные переменные путей
+source_folder = ""
+destination_folder = ""
+
+total_operations = 0
+completed_operations = 0
+
+# Определяем расширения файлов
+mp3_extension = ".mp3"
+png_extension = ".png"
+flac_extension = ".flac"
+other_extensions = [".mp4", ".avi", ".mov", ".mkv", ".flv"]  # можно добавить ещё
+
+# Проверяем дейсвительно ли исходная папка существует
+def ensure_dir_exists(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+# Проверяем, есть ли в папке файлы с расширениями mp3 или png или видео-форматы.
+def has_target_files(folder_path):
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in [mp3_extension, png_extension, flac_extension] or ext in other_extensions:
+                return True
+    return False
+
+# Ключевая логика приложения
+def process_folder(src_folder, dst_folder, progress_bar):
+    ensure_dir_exists(dst_folder)
+    items = os.listdir(src_folder)
+    total_items = len(items)
+    for index, item in enumerate(items):
+        src_path = os.path.join(src_folder, item)
+        dst_path = os.path.join(dst_folder, item)
+
+        # Собираем информацию о файлах в папке
+        mp3_files = []
+        png_files = []
+        flac_files = []
+        other_files = []
+
+        for item in items:
+            src_path = os.path.join(src_folder, item)
+            if os.path.isfile(src_path):
+                ext = os.path.splitext(item)[1].lower()
+                if ext == mp3_extension:
+                    mp3_files.append(item)
+                elif ext == png_extension:
+                    png_files.append(item)
+                elif ext == flac_extension:
+                    flac_files.append(item)
+                elif ext in other_extensions:
+                    other_files.append(item)
+
+                # Условие: если нет mp3, ничего не делаем
+            if not mp3_files:
+                return
+
+                # Определяем, что делать в зависимости от содержимого
+
+                # 1. Если в папке есть все другие файлы кроме mp3, то ничего не делаем
+            total_files = len(items)
+            total_non_mp3_files = total_files - len(mp3_files)
+            if total_non_mp3_files > 0 and len(mp3_files) == 0:
+                return
+
+                # 2. Если в папке ТОЛЬКО mp3 и png
+            if (len(mp3_files) > 0 and len(png_files) > 0 and not other_files):
+                # то КОПИРУЕМ оба файла
+                for file in mp3_files + png_files:
+                    src_path = os.path.join(src_folder, file)
+                    dst_path = os.path.join(dst_folder, file)
+                    if file in mp3_files:
+                        shutil.copy2(src_path, dst_path)
+                    else:
+                        shutil.copy2(src_path, dst_path)
+
+                # 3. Ели в папке есть mp3 + flac + png
+            elif (len(mp3_files) > 0 and len(flac_files) > 0 and len(png_files) > 0):
+                # ПЕРЕМЕЩАЕМ mp3 и КОПИРУЕМ png
+                for file in mp3_files:
+                    src_path = os.path.join(src_folder, file)
+                    dst_path = os.path.join(dst_folder, file)
+                    shutil.move(src_path, dst_path)
+
+                for file in png_files:
+                    src_path = os.path.join(src_folder, file)
+                    dst_path = os.path.join(dst_folder, file)
+                    shutil.copy2(src_path, dst_path)
+
+                # 4. Ели в папке есть mp3 + другие форматы + png
+            elif (len(mp3_files) > 0 and len(other_files) > 0 and len(png_files) > 0):
+                # КОПИРУЕМ mp3 и КОПИРУЕМ png
+                for file in mp3_files:
+                    src_path = os.path.join(src_folder, file)
+                    dst_path = os.path.join(dst_folder, file)
+                    shutil.copy2(src_path, dst_path)
+
+                for file in png_files:
+                    src_path = os.path.join(src_folder, file)
+                    dst_path = os.path.join(dst_folder, file)
+                    shutil.copy2(src_path, dst_path)
+
+                # 5. Если в папке есть все другие файлы кроме mp3, то ничего не делаем
+            elif (len(flac_files) > 0 and len(png_files) > 0 and len(other_files) > 0) and len(mp3_files) == 0:
+                return
+
+            else:
+                return
+
+                # Обработка подкаталогов
+            for item in items:
+                src_path = os.path.join(src_folder, item)
+                dst_path = os.path.join(dst_folder, item)
+
+                if os.path.isdir(src_path) and item == "Covers":
+                    continue
+
+                if os.path.isdir(src_path):
+                    if has_target_files(src_path):
+                        process_folder(src_path, dst_path, progress_bar)
+                    else:
+                        continue
+    progress_bar((index + 1) / total_items * 100)
+
+def start_processing():
+    global source_folder, destination_folder
+
+    # Проверка путей
+    if not source_folder or not destination_folder:
+        messagebox.showerror("Error", "Please select both paths.")
+        return
+    if not os.path.exists(source_folder):
+        messagebox.showerror("Error", f"Source folder path not found: {source_folder}")
+        return
+    if not os.path.exists(destination_folder):
+        messagebox.showerror("Error", f"Destination folder path not found: {destination_folder}")
+        return
+
+    # Запускаем в отдельном потоке
+    def task():
+        try:
+            progress_var.set(0)
+            with ThreadPoolExecutor() as executor:
+                for item in os.listdir(source_folder):
+                    src_path = os.path.join(source_folder, item)
+                    dst_path = os.path.join(destination_folder, item)
+                    if os.path.isdir(src_path):
+                        # Проверяем наличие target файлов перед обработкой
+                        if has_target_files(src_path):
+                            process_folder(src_path, dst_path, update_progress)
+                        else:
+                            # Если нет target файлов - пропускаем создание этой папки и её содержимого
+                            continue
+            messagebox.showinfo("Success", "The process completed successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        finally:
+            progress_var.set(0)
+
+    def update_progress(percent):
+        progress_var.set(percent)
+
+    threading.Thread(target=task).start()
+
+
+def select_source():
+    global source_folder
+    path = filedialog.askdirectory(title="Select source folder")
+    if path:
+        source_folder = path
+        label_source.config(text=f"Source folder: {path}")
+
+
+def select_destination():
+    global destination_folder
+    path = filedialog.askdirectory(title="Select destination folder")
+    if path:
+        destination_folder = path
+        label_dest.config(text=f"Destination folder: {path}")
+
+
+# Создаем окно приложения (оставляем без изменений)
+root = tk.Tk()
+root.title("FromTo")
+
+progress_var = tk.DoubleVar()
+progress_bar = ttk.Progressbar(root, orient='horizontal', length=300, mode='determinate', variable=progress_var)
+progress_bar.pack(pady=10)
+
+btn_source = tk.Button(root, text="Source folder", command=select_source)
+btn_source.pack(pady=5)
+
+label_source = tk.Label(root, text="Source folder not selected")
+label_source.pack(pady=5)
+
+btn_dest = tk.Button(root, text="Destination folder", command=select_destination)
+btn_dest.pack(pady=5)
+
+label_dest = tk.Label(root, text="Destination folder not selected")
+label_dest.pack(pady=5)
+
+btn_start = tk.Button(root, text="Move or copy", command=start_processing)
+btn_start.pack(pady=20)
+
+root.mainloop()
