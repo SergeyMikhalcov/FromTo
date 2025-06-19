@@ -1,0 +1,279 @@
+import tkinter as tk
+from tkinter import filedialog
+from PIL import Image, ImageTk
+import threading
+import time
+
+# Изначальные переменные путей
+# from FromTo import source_folder
+# from FromTo import destination_folder
+source_folder = ""
+destination_folder = ""
+
+BACKGROUND_PATH = '6.png'
+LOGO_PATH = '5.png'
+BUTTON1_ANIM_PATHS = {
+    'normal': ['1.1.png'],
+    'hover': ['1.2.png'],
+    'pressed': ['1.3.png']
+}
+BUTTON2_ANIM_PATHS = {
+    'normal': ['2.1.png'],
+    'hover': ['2.2.png'],
+    'pressed': ['2.3.png']
+}
+BUTTON3_ANIM_PATHS = {
+    'normal': ['3.1.png'],
+    'hover': ['3.2.png'],
+    'pressed': ['3.3.png']
+}
+EXIT_BTN_IMAGES = {
+    'normal': "7.1.png",
+    'hover': "7.2.png",
+    'pressed': "7.3.png"
+}
+PROGRESS_BAR_PATH = '4.png'
+
+# Размеры окна
+WINDOW_WIDTH = 640
+WINDOW_HEIGHT = 720
+
+# Позиции элементов
+LOGO_POS = (40, 40)
+BUTTON1_POS = (320, 220)
+BUTTON2_POS = (320, 340)
+BUTTON3_POS = (320, 520)
+PROGRESS_FIELD_POS = (320, 620)
+
+# Инициализация главного окна
+root = tk.Tk()
+root.title("FromTo")
+root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+root.resizable(False, False)
+
+# Убираем рамку окна
+root.overrideredirect(True)
+
+# Загружаем фон и логотип
+background_img = Image.open(BACKGROUND_PATH).resize((640, 720))
+background_photo = ImageTk.PhotoImage(background_img)
+
+canvas = tk.Canvas(root, width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
+canvas.pack()
+
+canvas.create_image(0, 0, image=background_photo, anchor='nw')
+
+logo_img = Image.open(LOGO_PATH)
+logo_photo = ImageTk.PhotoImage(logo_img.resize((270, 81)))  # размер подобран под реальный размер логотипа
+
+canvas.create_image(LOGO_POS[0], LOGO_POS[1], image=logo_photo, anchor='nw')
+
+# Делаем так, чтобы окно перемещалось, когда мы цепляем его лкм в любой точке
+def start_move(event):
+    # Запоминаем начальные координаты мыши внутри окна
+    root.x = event.x
+    root.y = event.y
+
+def do_move(event):
+    # Вычисляем смещение и перемещаем окно
+    delta_x = event.x - root.x
+    delta_y = event.y - root.y
+    new_x = root.winfo_x() + delta_x
+    new_y = root.winfo_y() + delta_y
+    root.geometry(f"+{new_x}+{new_y}")
+
+canvas.bind("<ButtonPress-1>", start_move)
+canvas.bind("<B1-Motion>", do_move)
+
+# Переменные для путей и их отображения
+#source_path_var = tk.StringVar()
+#dest_path_var = tk.StringVar()
+
+# Поля для отображения выбранных путей - сделаны чёрными с белым текстом.
+#entry_source = tk.Entry(root, textvariable=source_path_var, state='readonly', width=40,
+#                         bg='black', fg='white', insertbackground='white')
+#entry_dest   = tk.Entry(root, textvariable=dest_path_var, state='readonly', width=40,
+#                         bg='black', fg='white', insertbackground='white')
+
+# Переменные для путей
+source_path = ''
+dest_path = ''
+
+# Обработчики кнопок выбора папок:
+def select_source():
+    global source_path
+    path = filedialog.askdirectory()
+    if path:
+        source_path = path
+        # Можно обновлять переменную или делать что нужно
+def select_destination():
+    global dest_path
+    path = filedialog.askdirectory()
+    if path:
+        dest_path = path
+        # Аналогично
+
+# Обработчики для кнопок выбора папки
+#def select_source():
+#    select_folder(entry_source)
+#def select_destination():
+#    select_folder(entry_dest)
+# def select_source():
+#    global source_folder
+#    path = filedialog.askdirectory(title="Выберите исходную папку")
+#    if path:
+#        source_folder = path
+# def select_destination():
+#    global destination_folder
+#    path = filedialog.askdirectory(title="Выберите папку назначения")
+#    if path:
+#        destination_folder = path
+
+'''Анимация кнопок'''
+class AnimatedButton(tk.Label):
+    def __init__(self, master, anim_paths, command=None):
+        super().__init__(master)
+        self.anim_paths = anim_paths
+        self.frames_normal = [ImageTk.PhotoImage(Image.open(p)) for p in anim_paths['normal']]
+        self.frames_hover = [ImageTk.PhotoImage(Image.open(p)) for p in anim_paths['hover']]
+        self.frames_pressed = [ImageTk.PhotoImage(Image.open(p)) for p in anim_paths['pressed']]
+        self.current_frames = self.frames_normal
+        self.frame_index = 0
+        self.command = command
+        self.is_animating = False
+
+        # Убираем границу у кнопки
+        self.config(image=self.frames_normal[0], borderwidth=0, highlightthickness=0)
+        self.bind('<Enter>', self.on_enter)
+        self.bind('<Leave>', self.on_leave)
+        self.bind('<ButtonPress-1>', self.on_press)
+        self.bind('<ButtonRelease-1>', self.on_release)
+
+        # Запуск анимации кадров
+        self.animate()
+
+    def animate(self):
+        if not hasattr(self, '_stop_animation'):
+            self._stop_animation = False
+        if not getattr(self, '_stop_animation'):
+            self.frame_index = (self.frame_index + 1) % len(self.current_frames)
+            self.config(image=self.current_frames[self.frame_index])
+            # Запланировать следующий кадр через 200 мс
+            self.after(200, self.animate)
+
+    def on_enter(self, event):
+        if not hasattr(self, '_stop_animation'):
+            self._stop_animation = False
+        self.current_frames = self.frames_hover
+
+    def on_leave(self, event):
+        if not hasattr(self, '_stop_animation'):
+            self._stop_animation = False
+        self.current_frames = self.frames_normal
+
+    def on_press(self, event):
+        if not hasattr(self, '_stop_animation'):
+            self._stop_animation = False
+        self.current_frames = self.frames_pressed
+
+    def on_release(self, event):
+        if not hasattr(self, '_stop_animation'):
+            self._stop_animation = False
+        # Вернуться к hover или normal в зависимости от положения курсора
+        x, y = event.x_root, event.y_root
+        widget_x = event.widget.winfo_rootx()
+        widget_y = event.widget.winfo_rooty()
+        width = event.widget.winfo_width()
+        height = event.widget.winfo_height()
+        if widget_x <= x <= widget_x + width and widget_y <= y <= widget_y + height:
+            # Курсор внутри кнопки — hover состояние
+            self.current_frames = self.frames_hover
+            if callable(self.command):
+                threading.Thread(target=self.command).start()
+
+
+def select_folder(entry_widget):
+    folder_path = filedialog.askdirectory()
+    if folder_path:
+        entry_widget.config(state='normal')
+        entry_widget.delete(0, 'end')
+        entry_widget.insert(0, folder_path)
+        entry_widget.config(state='readonly')
+
+
+def run_script():
+    # Имитация процесса перемещения/копирования с прогрессом
+    progress_bar.config(width=0)
+    total_steps = 100
+    for i in range(total_steps + 1):
+        time.sleep(0.05)  # замените на вызов вашего скрипта или его части
+        progress_bar.config(width=int(i * 200 / total_steps))
+
+# Создаем кнопки с анимацией и убираем границы у них.
+btn_source = AnimatedButton(root, BUTTON1_ANIM_PATHS, command=lambda: select_source())
+canvas.create_window(BUTTON1_POS[0], BUTTON1_POS[1], window=btn_source)
+
+btn_dest   = AnimatedButton(root, BUTTON2_ANIM_PATHS, command=lambda: select_destination())
+canvas.create_window(BUTTON2_POS[0], BUTTON2_POS[1], window=btn_dest)
+
+# Кнопка "move or copy"
+def start_move_copy():
+    threading.Thread(target=run_move_copy_process).start()
+
+def run_move_copy_process():
+    progress_bar.config(width=0)
+    total_steps = 100
+    for i in range(total_steps + 1):
+        time.sleep(0.05)
+        progress_bar.config(width=int(i * 200 / total_steps))
+
+btn_move_copy_img_paths = {
+    'normal': ['4.png'],
+    'hover': ['4.png'],
+    'pressed': ['4.png']
+}
+btn_move_copy   = AnimatedButton(root, BUTTON3_ANIM_PATHS, command=start_move_copy)
+canvas.create_window(BUTTON3_POS[0], BUTTON3_POS[1], window=btn_move_copy)
+
+# Поле прогресса - изображение полоски прогресса + рамка или просто ширина полосы.
+progress_frame_bg_color='#FFFFFF' # можно оставить белым или изменить по желанию.
+progress_frame_width=200
+
+progress_frame_bg=tk.Frame(root,width=progress_frame_width,height=20,bg='white')
+progress_frame_bg.place(x=PROGRESS_FIELD_POS[0], y=PROGRESS_FIELD_POS[1])
+
+progress_bar=tk.Frame(progress_frame_bg,width=0,height=20,bg='green')
+progress_bar.pack(side='left', fill='y')
+
+# Загрузка изображений для кнопки выхода
+exit_normal_img = ImageTk.PhotoImage(Image.open(EXIT_BTN_IMAGES['normal']))
+exit_hover_img = ImageTk.PhotoImage(Image.open(EXIT_BTN_IMAGES['hover']))
+exit_pressed_img = ImageTk.PhotoImage(Image.open(EXIT_BTN_IMAGES['pressed']))
+
+def on_exit():
+    root.destroy()
+
+# Создаем кнопку выхода
+exit_button = tk.Label(root, image=exit_normal_img, borderwidth=0)
+
+def on_enter_exit(event):
+    exit_button.config(image=exit_hover_img)
+def on_leave_exit(event):
+    exit_button.config(image=exit_normal_img)
+def on_press_exit(event):
+    exit_button.config(image=exit_pressed_img)
+def on_release_exit(event):
+    on_leave_exit(event)
+    on_exit()
+
+# Обработка событий
+exit_button.bind('<Enter>', on_enter_exit)
+exit_button.bind('<Leave>', on_leave_exit)
+exit_button.bind('<ButtonPress-1>', on_press_exit)
+exit_button.bind('<ButtonRelease-1>', on_release_exit)
+
+# Размещение кнопки (например, в правом верхнем углу)
+canvas.create_window(WINDOW_WIDTH - 40, 40, window=exit_button)
+
+# Запуск главного цикла приложения
+root.mainloop()
