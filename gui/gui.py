@@ -46,7 +46,7 @@ class FromToGUI:
         self.BUTTON1_POS = (320, 220)
         self.BUTTON2_POS = (320, 340)
         self.BUTTON3_POS = (320, 520)
-        self.PROGRESS_FIELD_POS = (320, 620)
+        self.PROGRESS_FIELD_POS = (40, 640)
 
         # Event handler
         self.on_select_source = None
@@ -88,7 +88,7 @@ class FromToGUI:
 
         # Buttons creation
         self._create_buttons()
-        self._create_progress_bar()
+        self._init_image_progress_bar()
         self._create_exit_button()
 
     def _setup_paths(self):
@@ -136,15 +136,28 @@ class FromToGUI:
         self.canvas.create_window(self.BUTTON3_POS[0], self.BUTTON3_POS[1],
                                   window=self.btn_move_copy)
 
-    def _create_progress_bar(self):
-        self.progress_frame_bg = tk.Frame(self.root, width=200, height=20,
-                                          bg='white')
-        self.progress_frame_bg.place(x=self.PROGRESS_FIELD_POS[0],
-                                     y=self.PROGRESS_FIELD_POS[1])
+    def _init_image_progress_bar(self):
+        """Init graphical progress bar"""
+        # Load full progress bar image
+        self.full_progress_img = Image.open(self.PROGRESS_BAR_PATH)
+        self.progress_width, self.progress_height = self.full_progress_img.size
 
-        self.progress_bar = tk.Frame(self.progress_frame_bg, width=0,
-                                     height=20, bg='green')
-        self.progress_bar.pack(side='left', fill='y')
+        self.progress_canvas = tk.Canvas(
+                self.root,
+                width=self.progress_width,
+                height=self.progress_height,
+                highlightthickness=0,
+                bd=0)
+        self.progress_canvas.place(x=self.PROGRESS_FIELD_POS[0],
+                                   y=self.PROGRESS_FIELD_POS[1])
+
+        # Create image for current progress bar
+        empty_img = Image.new('RGBA', (1, self.progress_height))
+        self.current_progress_img = ImageTk.PhotoImage(empty_img)
+        self.progress_image_id = self.progress_canvas.create_image(
+            0, 0,
+            anchor='nw',
+            image=self.current_progress_img)
 
     def _create_exit_button(self):
         # Exit button initialization
@@ -204,9 +217,35 @@ class FromToGUI:
             self.root.destroy()
 
     def update_progress(self, value, max_value=100):
-        """Progressbar updating"""
-        width = int(value * 200 / max_value)
-        self.progress_bar.config(width=width)
+        """
+        Progressbar updating
+        :param value: current value (0-max_value)
+        :param max_value: max value
+        """
+        if not hasattr(self, 'full_progress_img') or not self.root.winfo_exists():
+            return
+
+        try:
+            # Calculate displaying width
+            progress_width = max(1, int((value / max_value) * self.progress_width))
+
+            # Cut image
+            cropped_img = self.full_progress_img.crop(
+                (0, 0, progress_width, self.progress_height))
+
+            # Create new image for Tkinter
+            self.current_progress_img = ImageTk.PhotoImage(cropped_img)
+
+            # Update image on canvas
+            self.progress_canvas.itemconfig(
+                self.progress_image_id,
+                image=self.current_progress_img)
+
+            # Update window
+            self.root.update_idletasks()
+
+        except Exception as e:
+            print(f"Error updating progress: {e}")
 
     def run(self):
         """Main cycle starting"""
@@ -265,9 +304,14 @@ class AnimatedButton(tk.Label):
 
 
 def test():
-    app = FromToGUI('dark')
-    app.run()
+    import time
+
+    for i in range(101):
+        app.update_progress(i)
+        time.sleep(0.05)
 
 
 if __name__ == '__main__':
-    test()
+    app = FromToGUI('dark')
+    threading.Thread(target=test).start()
+    app.run()
